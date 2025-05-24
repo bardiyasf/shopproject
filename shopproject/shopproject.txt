@@ -1,0 +1,261 @@
+import sqlite3
+import tkinter
+import re
+
+#======================functions======================
+def login():
+    user = txtUser.get()
+    pas = txtPass.get()
+    sql = 'SELECT * FROM users WHERE username=? AND password=?'
+    result = cnt.execute(sql, (user, pas))
+    data = result.fetchall()
+    if len(data) < 1:
+        lblMSG.configure(text='Wrong username or password', fg='red')
+    else:
+        lblMSG.configure(text='Welcome to your account', fg='green')
+        txtUser.delete(0, 'end')
+        txtPass.delete(0, 'end')
+        btnLogin.configure(state='disabled')
+        btnShop.configure(state='normal')
+        btnCart.configure(state='normal')  
+
+def signup():
+    def savesignup(user, pas, addr):
+        sql = 'INSERT INTO users(username,password,address,grade) VALUES (?, ?, ?, 0)'
+        try:
+            cnt.execute(sql, (user, pas, addr))
+            cnt.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def submitVal(user, pas, cpas):
+        if user == '' or pas == '' or cpas == '':
+            return False, 'Empty fields error!'
+        if pas != cpas:
+            return False, 'Password and confirm mismatch!'
+        sql = 'SELECT * FROM users WHERE username=?'
+        result = cnt.execute(sql, (user,))
+        data = result.fetchall()
+        if len(data) > 0:
+            return False, 'Username already exists!'
+        pattern = r"^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$"
+        if not re.match(pattern, pas):
+            return False, 'Invalid password! Password must have minimum 8 characters, including a letter, a number, and a special character.'
+        return True, ''
+
+    winSignup = tkinter.Toplevel(win)
+    winSignup.title('Signup')
+    winSignup.geometry('300x300')
+
+    lblUser = tkinter.Label(winSignup, text='Username:')
+    lblUser.pack()
+    entryUser = tkinter.Entry(winSignup, width=18)
+    entryUser.pack()
+
+    lblPass = tkinter.Label(winSignup, text='Password:')
+    lblPass.pack()
+    entryPass = tkinter.Entry(winSignup, width=18, show='*')
+    entryPass.pack()
+
+    lblcPass = tkinter.Label(winSignup, text='Confirm Password:')
+    lblcPass.pack()
+    entrycPass = tkinter.Entry(winSignup, width=18, show='*')
+    entrycPass.pack()
+
+    lblAddr = tkinter.Label(winSignup, text='Address:')
+    lblAddr.pack()
+    entryAddr = tkinter.Entry(winSignup, width=18)
+    entryAddr.pack()
+
+    lblMSG2 = tkinter.Label(winSignup, text='')
+    lblMSG2.pack()
+
+    def submit():
+        user = entryUser.get()
+        pas = entryPass.get()
+        cpas = entrycPass.get()
+        addr = entryAddr.get()
+        result, msg = submitVal(user, pas, cpas)
+        if not result:
+            lblMSG2.configure(text=msg, fg='red')
+            return
+        result = savesignup(user, pas, addr)
+        if not result:
+            lblMSG2.configure(text='Something went wrong while connecting database or username exists!', fg='red')
+        else:
+            lblMSG2.configure(text='Signup done successfully!', fg='green')
+            entryUser.delete(0, 'end')
+            entryPass.delete(0, 'end')
+            entrycPass.delete(0, 'end')
+            entryAddr.delete(0, 'end')
+
+    btnSubmit = tkinter.Button(winSignup, text='Submit!', width=18, command=submit)
+    btnSubmit.pack()
+
+def getAllProducts():
+    sql = 'SELECT * FROM products'
+    result = cnt.execute(sql)
+    data = result.fetchall()
+    return data
+
+def update_product_list(lstbox):
+    lstbox.delete(0, 'end')
+    products = getAllProducts()
+    for product in products:
+        text = f'Id: {product[0]}, Name: {product[1]}, Numbers: {product[2]}, Price: {product[3]}'
+        lstbox.insert('end', text)
+
+def validate_and_buy():
+    product_id = txtid.get()
+    product_num = txtnum.get()
+
+    if not product_id.isdigit() or not product_num.isdigit():
+        lblmsg3.configure(text="Invalid input! Please enter numbers only.", fg="red")
+        return
+
+    product_id = int(product_id)
+    product_num = int(product_num)
+
+    products = getAllProducts()
+    product_found = False
+
+    for product in products:
+        if product[0] == product_id:
+            product_found = True
+            if product_num > product[2]:
+                lblmsg3.configure(text="Not enough stock available!", fg="red")
+                return
+
+            sql = '''INSERT INTO cart (product_id, product_name, quantity, price) VALUES (?, ?, ?, ?)'''
+            cnt.execute(sql, (product_id, product[1], product_num, product[3]))
+            cnt.commit()
+
+            new_quantity = product[2] - product_num
+            sql_update = '''UPDATE products SET numbers = ? WHERE id = ?'''
+            cnt.execute(sql_update, (new_quantity, product_id))
+            cnt.commit()
+
+            update_product_list(lstbox)
+
+            lblmsg3.configure(text="Purchase successful! Stock updated.", fg="green")
+            return
+
+    if not product_found:
+        lblmsg3.configure(text="Product ID not found!", fg="red")
+
+def shop():
+    global txtid, txtnum, lblmsg3, lstbox
+    winShop = tkinter.Toplevel(win)
+    winShop.title('Shop panel')
+    winShop.geometry('350x350')
+
+    lstbox = tkinter.Listbox(winShop, width=50)
+    lstbox.pack(pady=5)
+
+    products = getAllProducts()
+    for product in products:
+        text = f'Id: {product[0]}, Name: {product[1]}, Numbers: {product[2]}, Price: {product[3]}'
+        lstbox.insert('end', text)
+
+    lblid = tkinter.Label(winShop, text='Product ID:')
+    lblid.pack()
+    txtid = tkinter.Entry(winShop)
+    txtid.pack()
+
+    lblnum = tkinter.Label(winShop, text='Product Numbers:')
+    lblnum.pack()
+    txtnum = tkinter.Entry(winShop)
+    txtnum.pack()
+
+    lblmsg3 = tkinter.Label(winShop, text='')
+    lblmsg3.pack()
+
+    btnbuy = tkinter.Button(winShop, text='BUY!', width=20, command=validate_and_buy)
+    btnbuy.pack()
+
+def view_cart():
+    winCart = tkinter.Toplevel(win)
+    winCart.title('Your Cart')
+    winCart.geometry('400x300')
+
+    lstCart = tkinter.Listbox(winCart, width=50)
+    lstCart.pack(pady=10)
+
+    sql = 'SELECT product_name, quantity, price FROM cart'
+    result = cnt.execute(sql)
+    data = result.fetchall()
+
+    if not data:
+        lstCart.insert('end', 'Your cart is empty.')
+    else:
+        total = 0
+        for item in data:
+            name, qty, price = item
+            subtotal = qty * price
+            total += subtotal
+            lstCart.insert('end', f'{name} x{qty} - ${subtotal:.2f}')
+        lstCart.insert('end', f'---')
+        lstCart.insert('end', f'Total: ${total:.2f}')
+
+#========================main=================
+cnt = sqlite3.connect('myshop.db')
+
+cnt.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    address TEXT,
+    grade INTEGER
+)
+''')
+cnt.execute('''
+CREATE TABLE IF NOT EXISTS cart (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER,
+    product_name TEXT,
+    quantity INTEGER,
+    price REAL
+)
+''')
+cnt.execute('''
+CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    numbers INTEGER,
+    price REAL
+)
+''')
+cnt.commit()
+
+win = tkinter.Tk()
+win.title("Shop Project")
+win.geometry('300x350')
+
+lblUser = tkinter.Label(win, text='Username:')
+lblUser.pack()
+txtUser = tkinter.Entry(win, width=18)
+txtUser.pack()
+
+lblPass = tkinter.Label(win, text='Password:')
+lblPass.pack()
+txtPass = tkinter.Entry(win, width=18, show='*')
+txtPass.pack()
+
+lblMSG = tkinter.Label(win, text='')
+lblMSG.pack()
+
+btnLogin = tkinter.Button(win, text='Login', width=18, command=login)
+btnLogin.pack()
+
+btnSignup = tkinter.Button(win, text='Signup', width=18, command=signup)
+btnSignup.pack(pady=7)
+
+btnShop = tkinter.Button(win, text='Shop Now!!!', width=18, state='disabled', command=shop)
+btnShop.pack(pady=7)
+
+btnCart = tkinter.Button(win, text='View Cart ', width=18, state='disabled', command=view_cart)
+btnCart.pack(pady=5)
+
+win.mainloop()
